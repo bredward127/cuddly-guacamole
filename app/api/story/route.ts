@@ -1,73 +1,7 @@
 import { NextResponse } from 'next/server';
 
-type RawEvent = { sender: string; type: 'text' | 'image' | 'deleted'; text: string; imagePrompt: string; delay: number; typing: number };
-
-const lengthMap: Record<string, { min: number; max: number }> = {
-  '20–30 seconds': { min: 14, max: 18 },
-  '45–60 seconds': { min: 28, max: 38 },
-  '90 seconds': { min: 48, max: 60 },
-  '2–3 minutes': { min: 80, max: 105 },
-};
-
-function sanitize(value: unknown, limit: number) { return typeof value === 'string' ? value.trim().slice(0, limit) : ''; }
-
-async function makeImage(prompt: string) {
-  const response = await fetch('https://fal.run/fal-ai/flux/schnell', {
-    method: 'POST',
-    headers: { Authorization: `Key ${process.env.FAL_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, image_size: { width: 768, height: 1024 }, num_images: 1, enable_safety_checker: true }),
-  });
-  if (!response.ok) throw new Error(`fal.ai image request failed (${response.status})`);
-  const data = await response.json();
-  const url = data?.images?.[0]?.url;
-  if (!url) throw new Error('fal.ai did not return an image URL');
-  return url as string;
-}
-
-export async function POST(request: Request) {
-  try {
-    if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: 'Missing ANTHROPIC_API_KEY in server environment.' }, { status: 500 });
-    if (!process.env.FAL_KEY) return NextResponse.json({ error: 'Missing FAL_KEY in server environment.' }, { status: 500 });
-
-    const body = await request.json();
-    const genre = sanitize(body.genre, 40) || 'Thriller';
-    const length = sanitize(body.length, 30) || '45–60 seconds';
-    const tone = sanitize(body.tone, 40) || 'Tense';
-    const format = sanitize(body.format, 40) || 'Two-person chat';
-    const premise = sanitize(body.premise, 700);
-    if (premise.length < 8) return NextResponse.json({ error: 'Enter a story premise with at least 8 characters.' }, { status: 400 });
-
-    const target = lengthMap[length] ?? lengthMap['45–60 seconds'];
-    const schema = {
-      type: 'object', additionalProperties: false,
-      properties: {
-        title: { type: 'string' },
-        contactName: { type: 'string' },
-        subtitle: { type: 'string' },
-        events: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { sender: { type: 'string' }, type: { type: 'string', enum: ['text', 'image', 'deleted'] }, text: { type: 'string' }, imagePrompt: { type: 'string' }, delay: { type: 'integer' }, typing: { type: 'integer' } }, required: ['sender', 'type', 'text', 'imagePrompt', 'delay', 'typing'] } }
-      }, required: ['title', 'contactName', 'subtitle', 'events']
-    };
-
-    const prompt = `Create an original, fictional, short-form text-message story. Genre: ${genre}. Tone: ${tone}. Format: ${format}. Premise: ${premise}. Create ${target.min} to ${target.max} events. The hook must be the first event. Messages must be short, natural, and readable on a phone. Create escalating reveals every 4–6 events and a strong final cliffhanger. Exactly two events must be type image; each needs a safe, detailed vertical 3:4 fictional imagePrompt. All other imagePrompt fields must be empty strings. Sender names must be fictional. Never imitate a real person, a real private conversation, a real platform UI, copyrighted characters, or present the story as evidence. Pace it intelligently: 350–800ms pause for quick back-and-forth, 900–1800ms for tension, 1800–3000ms before major reveals. typing is 300–1600ms. Return only the requested JSON.`;
-
-    const claude = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5', max_tokens: 6000, messages: [{ role: 'user', content: prompt }], output_config: { format: { type: 'json_schema', schema } } }),
-    });
-    if (!claude.ok) throw new Error(`Claude request failed (${claude.status}): ${await claude.text()}`);
-    const claudeData = await claude.json();
-    const text = claudeData?.content?.find((block: { type: string }) => block.type === 'text')?.text;
-    if (!text) throw new Error('Claude did not return story text');
-    const story = JSON.parse(text) as { title: string; contactName: string; subtitle: string; events: RawEvent[] };
-    const imageEvents = story.events.filter((event) => event.type === 'image');
-    if (imageEvents.length !== 2) throw new Error('Story generation did not include exactly two image reveals. Please try again.');
-    const images = await Promise.all(imageEvents.map((event) => makeImage(event.imagePrompt)));
-    let index = 0;
-    const events = story.events.map((event, eventIndex) => ({ ...event, id: `${eventIndex + 1}`, imageUrl: event.type === 'image' ? images[index++] : '' }));
-    return NextResponse.json({ ...story, events });
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Story generation failed.' }, { status: 500 });
-  }
-}
+type Event = { sender:string; type:'text'|'image'|'deleted'; text:string; imagePrompt:string; delay:number; typing:number };
+const counts:Record<string,[number,number]>={'20–30 seconds':[14,18],'45–60 seconds':[28,38],'90 seconds':[48,60],'2–3 minutes':[80,105],'4–5 minutes':[110,135]};
+const clean=(value:unknown,max:number)=>typeof value==='string'?value.trim().slice(0,max):'';
+async function image(prompt:string){const r=await fetch('https://fal.run/fal-ai/flux/schnell',{method:'POST',headers:{Authorization:`Key ${process.env.FAL_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({prompt,image_size:{width:768,height:1024},num_images:1,enable_safety_checker:true})});if(!r.ok)throw Error(`fal.ai image request failed (${r.status})`);const data=await r.json();if(!data?.images?.[0]?.url)throw Error('fal.ai did not return an image URL');return data.images[0].url as string}
+export async function POST(request:Request){try{if(!process.env.ANTHROPIC_API_KEY||!process.env.FAL_KEY)return NextResponse.json({error:'Set ANTHROPIC_API_KEY and FAL_KEY in Vercel.'},{status:500});const body=await request.json();const genre=clean(body.genre,40)||'Thriller',tone=clean(body.tone,40)||'Tense',format=clean(body.format,40)||'Two-person chat',premise=clean(body.premise,700),length=clean(body.length,30)||'45–60 seconds';if(premise.length<8)return NextResponse.json({error:'Enter a longer story premise.'},{status:400});const p=body.pacing||{};const pacing={typing:Math.max(300,Math.min(Number(p.typing)||1200,7000)),normal:Math.max(500,Math.min(Number(p.normal)||2500,12000)),tension:Math.max(800,Math.min(Number(p.tension)||4500,16000)),reveal:Math.max(1200,Math.min(Number(p.reveal)||7500,22000))};const [min,max]=counts[length]||counts['45–60 seconds'];const prompt=`Write an original fictional ${genre} ${format} story from this premise: ${premise}. Tone: ${tone}. Create ${min}-${max} events. Exactly two image events, each with a detailed safe vertical fictional imagePrompt. All other imagePrompt values blank. Use short phone-readable messages, an immediate hook, escalation every 4-6 messages, and a cliffhanger. Timing is creator-controlled: typing=${pacing.typing}ms, normal=${pacing.normal}ms, tension=${pacing.tension}ms, reveal=${pacing.reveal}ms. Use normal delay for ordinary dialogue, tension delay for important/suspicious dialogue, and reveal delay before image, deleted message, twist, and final message. Never use real people, real conversations, copyrighted characters, or claims the chat is real. Return JSON only with title, contactName, subtitle, events. Each event must include sender,type,text,imagePrompt,delay,typing.`;const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':process.env.ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01','content-type':'application/json'},body:JSON.stringify({model:process.env.CLAUDE_MODEL||'claude-sonnet-4-5',max_tokens:10000,messages:[{role:'user',content:prompt}]})});if(!r.ok)throw Error(`Claude request failed (${r.status})`);const data=await r.json();const raw=data.content?.find((x:{type:string})=>x.type==='text')?.text;if(!raw)throw Error('Claude did not return a story');const story=JSON.parse(raw) as {title:string;contactName:string;subtitle:string;events:Event[]};const visual=story.events.filter(x=>x.type==='image').slice(0,2);if(visual.length!==2)throw Error('Try again: the story needs two image reveals.');const urls=await Promise.all(visual.map(x=>image(x.imagePrompt)));let i=0;return NextResponse.json({...story,events:story.events.map((x,n)=>({...x,id:String(n+1),imageUrl:x.type==='image'?urls[i++]:''}))});}catch(e){console.error(e);return NextResponse.json({error:e instanceof Error?e.message:'Generation failed.'},{status:500})}}
