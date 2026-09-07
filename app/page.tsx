@@ -1,11 +1,13 @@
 'use client';
 import {useEffect,useRef,useState}from'react';
-import {getPreset,toLegacyPacing}from'../lib/pacing';
+import CharacterBuilder from '../components/CharacterBuilder';
 import {applySurpriseSeed,pickPremiseOnlySeed,pickSurpriseSeed}from'../lib/randomStoryIdeas';
+import {Character, charactersFromSeedText, defaultCharacters, syncCharactersToFormat, validateCharacters}from'../lib/characters';
 
 type E={id:string;sender:string;type:'text'|'image'|'deleted';text:string;imageUrl:string;typing:number;delay:number;storyTime:string;dividerLabel:string;isMe:boolean};
-type S={title:string;contactName:string;subtitle:string;events:E[];senders:string[];youSender:string;isGroup:boolean};
-type Saved={id:string;savedAt:number;form:typeof defaultForm;story:S};
+type S={title:string;contactName:string;subtitle:string;events:E[];senders:string[];youSender:string;isGroup:boolean;participants?:Character[];groupName?:string};
+type FormState={genre:string;length:string;tone:string;format:string;premise:string;groupName:string;characters:Character[];imageCount:number;pacing:{typing:number;normal:number;tension:number;jump:number;reveal:number}};
+type Saved={id:string;savedAt:number;form:FormState;story:S};
 
 const PALETTE=['#e0507a','#3f9b6f','#c98a2e','#5b7fd6','#a25bd6','#2ea3a3','#d66b3f','#7a6fd6'];
 function colorFor(name:string){
@@ -14,7 +16,7 @@ function colorFor(name:string){
   return PALETTE[h%PALETTE.length];
 }
 const STORAGE_KEY='textflick-saved-stories';
-const defaultForm={genre:'Thriller',length:'4–5 minutes',tone:'Creepy',format:'Dating-app chat',premise:'',characters:'',imageCount:4,pacing:{typing:1800,normal:3200,tension:5500,jump:5000,reveal:8500}};
+const defaultForm:FormState={genre:'Thriller',length:'4–5 minutes',tone:'Creepy',format:'Dating-app chat',premise:'',groupName:'',characters:defaultCharacters('Dating-app chat'),imageCount:4,pacing:{typing:1800,normal:3200,tension:5500,jump:5000,reveal:8500}};
 const genres=['Horror','Thriller','Mystery','Romance','Drama','Comedy','Sci-fi','Fantasy','Time travel','Workplace drama','School drama'] as const;
 const lengths=['45–60 seconds','90 seconds','2–3 minutes','4–5 minutes'] as const;
 const tones=['Creepy','Tense','Emotional','Funny','Dark','Chaotic','Flirty','Wholesome'] as const;
@@ -27,10 +29,16 @@ function loadSaved():Saved[]{
 function persistSaved(list:Saved[]){
   try{window.localStorage.setItem(STORAGE_KEY,JSON.stringify(list.slice(0,30)));}catch{}
 }
-function buildPremise(form:typeof defaultForm){
-  const cast=form.characters.trim();
-  const story=form.premise.trim();
-  return [cast&&`Character definitions:\n${cast}`,story].filter(Boolean).join('\n\n');
+function hydrateForm(raw: Partial<FormState> | undefined): FormState {
+  const format = raw?.format || defaultForm.format;
+  return {
+    ...defaultForm,
+    ...raw,
+    format,
+    groupName: raw?.groupName || '',
+    pacing:{...defaultForm.pacing, ...(raw?.pacing||{})},
+    characters: syncCharactersToFormat(Array.isArray(raw?.characters) ? raw?.characters : defaultCharacters(format), format),
+  };
 }
 
 export default function Home(){
@@ -44,6 +52,7 @@ export default function Home(){
   const bottom=useRef<HTMLDivElement>(null);
   const lastHook=useRef('');
   const toastTimer=useRef<number>(0);
+  const charErrors=validateCharacters(form.characters, form.format, form.groupName);
 
   useEffect(()=>{setSaved(loadSaved());},[]);
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth',block:'end'})},[v,typing]);
@@ -64,7 +73,9 @@ export default function Home(){
   function surpriseMe(){
     const seed=pickSurpriseSeed(lastHook.current);
     lastHook.current=seed.hook;
-    setForm({...form,...applySurpriseSeed(seed)});
+    const next={...form,...applySurpriseSeed(seed)};
+    const cast=charactersFromSeedText(seed.characters, next.format, seed.hook);
+    setForm({...next, ...cast, characters:syncCharactersToFormat(cast.characters, next.format)});
     ping(`✦ ${seed.hook}`);
   }
   function randomPremise(){
@@ -73,7 +84,7 @@ export default function Home(){
     setForm({...form,premise:seed.premise});
     ping(`Premise unlocked: ${seed.hook}`);
   }
-  function saveStory(s:S,f:typeof defaultForm){
+  function saveStory(s:S,f:FormState){
     const entry:Saved={id:`${Date.now()}`,savedAt:Date.now(),form:f,story:s};
     const next=[entry,...loadSaved()];
     persistSaved(next);
@@ -81,7 +92,7 @@ export default function Home(){
   }
   function openSaved(entry:Saved){
     setStory(entry.story);
-    setForm({...defaultForm,...entry.form,pacing:{...defaultForm.pacing,...(entry.form?.pacing||{})}});
+    setForm(hydrateForm(entry.form));
     setV(0);setPlay(false);setShowSaved(false);
   }
   function deleteSaved(id:string){
@@ -90,9 +101,11 @@ export default function Home(){
   }
 
   async function make(){
+    const issues=validateCharacters(form.characters, form.format, form.groupName);
+    if(issues.length){setErr(issues[0]);return;}
     setLoad(true);setErr('');
     try{
-      const r=await fetch('/api/story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,premise:buildPremise(form)})});
+      const r=await fetch('/api/story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});
       const d=await r.json();
       if(!r.ok)throw Error(d.error||'Generation failed');
       setStory(d);setV(0);setPlay(false);
@@ -100,7 +113,14 @@ export default function Home(){
     }catch(e){setErr(e instanceof Error?e.message:'Generation failed')}
     finally{setLoad(false)}
   }
-  const set=(k:string,x:unknown)=>setForm({...form,[k]:x});
+  const set=(k:string,x:unknown)=>{
+    if(k==='format'){
+      const format=String(x);
+      setForm({...form, format, characters:syncCharactersToFormat(form.characters, format)});
+      return;
+    }
+    setForm({...form,[k]:x});
+  };
   const p=(k:string,x:number)=>setForm({...form,pacing:{...form.pacing,[k]:x}});
   const clock=story?.events[Math.max(0,v-1)]?.storyTime||'9:41 PM';
 
@@ -121,9 +141,12 @@ export default function Home(){
         </label>
       ))}
     </div>
-    <label>Character definition
-      <textarea rows={3} value={form.characters} onChange={e=>set('characters',e.target.value)} placeholder="Names, relationships, personalities, secrets, and who is the main character…"/>
-    </label>
+    <CharacterBuilder
+      format={form.format}
+      groupName={form.groupName}
+      characters={form.characters}
+      onChange={next=>setForm({...form, ...next})}
+    />
     <label>Story details
       <textarea rows={5} value={form.premise} onChange={e=>set('premise',e.target.value)} placeholder="Describe exactly what happens…"/>
     </label>
@@ -149,7 +172,7 @@ export default function Home(){
         </label>
       ))}
     </div>
-    <button disabled={load||form.premise.length<8} onClick={make}>{load?'Creating story and images…':'Generate complete story'}</button>
+    <button disabled={load||form.premise.length<8||charErrors.length>0} onClick={make}>{load?'Creating story and images…':'Generate complete story'}</button>
     {err&&<p>{err}</p>}
     {toast&&<div className="idea-toast" role="status">{toast}</div>}
 
@@ -170,7 +193,8 @@ export default function Home(){
     </div>}
   </section></main>;
 
-  const headerName=story.isGroup?story.title:story.senders.find(s=>s!==story.youSender)||story.contactName;
+  const youName=story.youSender || story.participants?.find(c=>c.isMainCharacter)?.name || story.senders[0];
+  const headerName=story.isGroup?(story.groupName||story.title):story.senders.find(s=>s!==youName)||story.contactName;
   return <main className={record?'recording':'shell'}>
     <section className="stage">
       <div className="phone">
@@ -180,12 +204,13 @@ export default function Home(){
           <em>{story.title}</em>
           {story.events.slice(0,v).map((e,idx,arr)=>{
             const prev=idx>0?arr[idx-1]:null;
-            const showName=story.isGroup&&!e.isMe&&e.type!=='deleted'&&(!prev||prev.sender!==e.sender);
+            const isMe=e.sender===youName || e.isMe;
+            const showName=story.isGroup&&!isMe&&e.type!=='deleted'&&(!prev||prev.sender!==e.sender);
             return (
               <div key={e.id}>
                 {e.dividerLabel&&<div className="divider">{e.dividerLabel}<small>{e.storyTime}</small></div>}
-                <div className={e.isMe?'row out':'row in'}>
-                  <article style={!e.isMe&&story.isGroup?{borderLeft:`3px solid ${colorFor(e.sender)}`}:undefined}>
+                <div className={isMe?'row out':'row in'}>
+                  <article style={!isMe&&story.isGroup?{borderLeft:`3px solid ${colorFor(e.sender)}`}:undefined}>
                     {showName&&<b className="sendername" style={{color:colorFor(e.sender)}}>{e.sender}</b>}
                     {e.type==='image'&&<img src={e.imageUrl} alt="AI story reveal"/>}
                     <span>{e.text}</span>

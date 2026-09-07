@@ -16,8 +16,32 @@ h1{font-size:clamp(26px,6vw,38px);letter-spacing:-1px;line-height:1.15;margin:0 
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
 @media (max-width:480px){.grid{grid-template-columns:1fr}}
 label{display:grid;gap:6px;font-size:12px;font-weight:800;color:#454057;margin:12px 0}
-select,textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff;color:#171524}
+select,textarea,input[type=text],.chars input,.chars textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff;color:#171524}
 textarea{resize:vertical;line-height:1.5}
+.chars{margin:16px 0;padding:14px;border:1px solid var(--line);background:#ffffffc7;border-radius:16px}
+.chars-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.chars-toggle{border:0;background:transparent;padding:0;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;color:var(--ink)}
+.chars-toggle span{color:var(--purple)}
+.char-grid{display:grid;gap:10px}
+.char-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}
+.char-card.main{border-color:#cbbef5;box-shadow:0 0 0 3px #efe9ff}
+.char-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.char-card-head b{font-size:12px}
+.char-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.char-errors{margin:10px 0 0;padding-left:18px;color:#b1265b;font-size:12px;font-weight:700}
+.helpinfo{position:relative;display:inline-flex;align-items:center}
+.helpinfo-btn{width:18px;height:18px;border-radius:50%;border:1px solid #cbbef5;background:#f4efff;color:#5b3fd6;font:700 11px/1 Manrope,Arial;padding:0}
+.helpinfo-tip{display:none;position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:230px;background:#211f2c;color:#fff;padding:8px 10px;border-radius:10px;font-size:11px;font-weight:600;z-index:20;line-height:1.4}
+.helpinfo-backdrop,.helpinfo-sheet{display:none}
+@media (hover:hover) and (min-width:721px){
+  .helpinfo:hover .helpinfo-tip,.helpinfo:focus-within .helpinfo-tip{display:block}
+}
+@media (hover:none), (max-width:720px){
+  .helpinfo-tip{display:none!important}
+  .helpinfo-backdrop{display:block;position:fixed;inset:0;background:#0006;z-index:80}
+  .helpinfo-sheet{display:block;position:fixed;left:0;right:0;bottom:0;background:#fff;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0;z-index:90;box-shadow:0 -10px 40px #0003}
+  .helpinfo-sheet p{margin:0 0 12px;font-size:14px;font-weight:600;color:#454057;line-height:1.45}
+}
 .idea-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 10px}
 @media (max-width:480px){.idea-row{grid-template-columns:1fr}}
 .idea{border:1px dashed #cbbef5;background:#f4efff;border-radius:12px;padding:12px 10px;font-size:13px;font-weight:800;color:#5b3fd6}
