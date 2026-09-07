@@ -18,7 +18,7 @@ h1{font-size:clamp(26px,6vw,38px);letter-spacing:-1px;line-height:1.15;margin:0 
 label{display:grid;gap:6px;font-size:12px;font-weight:800;color:#454057;margin:12px 0}
 select,textarea,input[type=text],.chars input,.chars textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff;color:#171524}
 textarea{resize:vertical;line-height:1.5}
-.chars{margin:16px 0;padding:14px;border:1px solid var(--line);background:#ffffffc7;border-radius:16px}
+.chars,.sounds{margin:16px 0;padding:14px;border:1px solid var(--line);background:#ffffffc7;border-radius:16px}
 .chars-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .chars-toggle{border:0;background:transparent;padding:0;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;color:var(--ink)}
 .chars-toggle span{color:var(--purple)}
@@ -29,6 +29,13 @@ textarea{resize:vertical;line-height:1.5}
 .char-card-head b{font-size:12px}
 .char-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .char-errors{margin:10px 0 0;padding-left:18px;color:#b1265b;font-size:12px;font-weight:700}
+.sounds b{font-size:14px}
+.sound-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;font-size:12px}
+.sound-row.test{display:grid;grid-template-columns:1fr auto;align-items:center}
+.sound-row.test label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0}
+.sound-row input[type=checkbox]{width:18px;height:18px;accent-color:#7056e8}
+.sound-row input[type=range]{width:46%;accent-color:#7056e8}
+.sound-note{margin:8px 0 0;color:var(--muted);font-size:11px;font-weight:600;line-height:1.45}
 .helpinfo{position:relative;display:inline-flex;align-items:center}
 .helpinfo-btn{width:18px;height:18px;border-radius:50%;border:1px solid #cbbef5;background:#f4efff;color:#5b3fd6;font:700 11px/1 Manrope,Arial;padding:0}
 .helpinfo-tip{display:none;position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:230px;background:#211f2c;color:#fff;padding:8px 10px;border-radius:10px;font-size:11px;font-weight:600;z-index:20;line-height:1.4}

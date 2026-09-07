@@ -1,8 +1,10 @@
 'use client';
 import {useEffect,useRef,useState}from'react';
 import CharacterBuilder from '../components/CharacterBuilder';
+import SoundSettings from '../components/SoundSettings';
 import {applySurpriseSeed,pickPremiseOnlySeed,pickSurpriseSeed}from'../lib/randomStoryIdeas';
 import {Character, charactersFromSeedText, defaultCharacters, syncCharactersToFormat, validateCharacters}from'../lib/characters';
+import {defaultSoundPrefs, loadSoundPrefs, playSound, saveSoundPrefs, SoundPrefs, unlockAudio}from'../lib/sounds';
 
 type E={id:string;sender:string;type:'text'|'image'|'deleted';text:string;imageUrl:string;typing:number;delay:number;storyTime:string;dividerLabel:string;isMe:boolean};
 type S={title:string;contactName:string;subtitle:string;events:E[];senders:string[];youSender:string;isGroup:boolean;participants?:Character[];groupName?:string};
@@ -40,6 +42,11 @@ function hydrateForm(raw: Partial<FormState> | undefined): FormState {
     characters: syncCharactersToFormat(Array.isArray(raw?.characters) ? raw?.characters : defaultCharacters(format), format),
   };
 }
+function cueForEvent(e: E){
+  if(e.type==='image') return 'imageReveal' as const;
+  if(e.type==='deleted') return 'deletedMessage' as const;
+  return (e.isMe ? 'outgoingMessage' : 'incomingMessage') as const;
+}
 
 export default function Home(){
   const[story,setStory]=useState<S|null>(null);
@@ -49,18 +56,37 @@ export default function Home(){
   const[showSaved,setShowSaved]=useState(false);
   const[toast,setToast]=useState('');
   const[pop,setPop]=useState(false);
+  const[sounds,setSounds]=useState<SoundPrefs>(defaultSoundPrefs);
   const bottom=useRef<HTMLDivElement>(null);
   const lastHook=useRef('');
   const toastTimer=useRef<number>(0);
+  const soundsRef=useRef(sounds);
+  const finishedRef=useRef(false);
   const charErrors=validateCharacters(form.characters, form.format, form.groupName);
+  soundsRef.current=sounds;
 
-  useEffect(()=>{setSaved(loadSaved());},[]);
+  useEffect(()=>{setSaved(loadSaved()); setSounds(loadSoundPrefs());},[]);
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth',block:'end'})},[v,typing]);
   useEffect(()=>{
-    if(!play||!story||v>=story.events.length){if(story&&v>=story.events.length)setPlay(false);return}
+    if(!play||!story)return;
+    if(v>=story.events.length){
+      if(!finishedRef.current){
+        finishedRef.current=true;
+        playSound('playbackComplete', soundsRef.current);
+      }
+      setPlay(false);
+      return;
+    }
     const e=story.events[v];setTyping(true);
+    playSound('typingStart', soundsRef.current);
     const a=setTimeout(()=>setTyping(false),e.typing);
-    const b=setTimeout(()=>setV(x=>x+1),e.typing+e.delay);
+    const b=setTimeout(()=>{
+      const prefs=soundsRef.current;
+      if(e.dividerLabel) playSound('timeJump', prefs);
+      playSound(cueForEvent(e), prefs);
+      if(v===story.events.length-1) playSound('twistHit', prefs);
+      setV(x=>x+1);
+    },e.typing+e.delay);
     return()=>{clearTimeout(a);clearTimeout(b)};
   },[play,v,story]);
 
@@ -69,6 +95,10 @@ export default function Home(){
     window.setTimeout(()=>setPop(false),420);
     window.clearTimeout(toastTimer.current);
     toastTimer.current=window.setTimeout(()=>setToast(''),2400);
+  }
+  function updateSounds(next: SoundPrefs){
+    setSounds(next);
+    saveSoundPrefs(next);
   }
   function surpriseMe(){
     const seed=pickSurpriseSeed(lastHook.current);
@@ -108,7 +138,7 @@ export default function Home(){
       const r=await fetch('/api/story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});
       const d=await r.json();
       if(!r.ok)throw Error(d.error||'Generation failed');
-      setStory(d);setV(0);setPlay(false);
+      setStory(d);setV(0);setPlay(false);finishedRef.current=false;
       saveStory(d,form);
     }catch(e){setErr(e instanceof Error?e.message:'Generation failed')}
     finally{setLoad(false)}
@@ -172,6 +202,7 @@ export default function Home(){
         </label>
       ))}
     </div>
+    <SoundSettings prefs={sounds} onChange={updateSounds}/>
     <button disabled={load||form.premise.length<8||charErrors.length>0} onClick={make}>{load?'Creating story and images…':'Generate complete story'}</button>
     {err&&<p>{err}</p>}
     {toast&&<div className="idea-toast" role="status">{toast}</div>}
@@ -225,9 +256,14 @@ export default function Home(){
         <footer>＋ <span>Message</span> 🎙</footer>
       </div>
       <div className="controls">
-        <button onClick={()=>v>=story.events.length?setV(0):setPlay(!play)}>{play?'Pause':v>=story.events.length?'Replay':'Play story'}</button>
-        <button onClick={()=>{setV(0);setPlay(false)}}>Restart</button>
+        <button onClick={()=>{
+          unlockAudio();
+          if(v>=story.events.length){setV(0);finishedRef.current=false;setPlay(true);return;}
+          setPlay(!play);
+        }}>{play?'Pause':v>=story.events.length?'Replay':'Play story'}</button>
+        <button onClick={()=>{setV(0);setPlay(false);finishedRef.current=false;}}>Restart</button>
         <button onClick={()=>setRecord(!record)}>{record?'Exit recording':'Recording mode'}</button>
+        <button onClick={()=>updateSounds({...sounds, enabled:!sounds.enabled})}>{sounds.enabled?'Mute':'Unmute'}</button>
         {!record&&<button onClick={()=>setStory(null)}>New story</button>}
         {!record&&saved.length>0&&<button onClick={()=>setShowSaved(true)}>My Stories</button>}
       </div>
