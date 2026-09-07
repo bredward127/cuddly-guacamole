@@ -2,9 +2,12 @@
 import {useEffect,useRef,useState}from'react';
 import CharacterBuilder from '../components/CharacterBuilder';
 import SoundSettings from '../components/SoundSettings';
+import AuthModal from '../components/AuthModal';
 import {applySurpriseSeed,pickPremiseOnlySeed,pickSurpriseSeed}from'../lib/randomStoryIdeas';
 import {Character, charactersFromSeedText, defaultCharacters, syncCharactersToFormat, validateCharacters}from'../lib/characters';
 import {defaultSoundPrefs, loadSoundPrefs, playSound, saveSoundPrefs, SoundPrefs, unlockAudio}from'../lib/sounds';
+import {createClient}from'../lib/supabase/client';
+import type {User}from'@supabase/supabase-js';
 
 type E={id:string;sender:string;type:'text'|'image'|'deleted';text:string;imageUrl:string;typing:number;delay:number;storyTime:string;dividerLabel:string;isMe:boolean};
 type S={title:string;contactName:string;subtitle:string;events:E[];senders:string[];youSender:string;isGroup:boolean;participants?:Character[];groupName?:string};
@@ -58,6 +61,8 @@ export default function Home(){
   const[toast,setToast]=useState('');
   const[pop,setPop]=useState(false);
   const[sounds,setSounds]=useState<SoundPrefs>(defaultSoundPrefs);
+  const[user,setUser]=useState<User|null>(null);
+  const[showAuth,setShowAuth]=useState(false);
   const bottom=useRef<HTMLDivElement>(null);
   const lastHook=useRef('');
   const toastTimer=useRef<number>(0);
@@ -66,7 +71,21 @@ export default function Home(){
   const charErrors=validateCharacters(form.characters, form.format, form.groupName);
   soundsRef.current=sounds;
 
-  useEffect(()=>{setSaved(loadSaved()); setSounds(loadSoundPrefs());},[]);
+  useEffect(()=>{
+    setSaved(loadSaved());
+    setSounds(loadSoundPrefs());
+    const supabase = createClient();
+    if(supabase){
+      supabase.auth.getUser().then(({data})=>{
+        if(data?.user) setUser(data.user);
+      });
+      const {data:{subscription}}=supabase.auth.onAuthStateChange((_event, session)=>{
+        setUser(session?.user ?? null);
+      });
+      return ()=>subscription.unsubscribe();
+    }
+  },[]);
+
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth',block:'end'})},[v,typing]);
   useEffect(()=>{
     if(!play||!story)return;
@@ -131,7 +150,18 @@ export default function Home(){
     persistSaved(next);setSaved(next);
   }
 
+  async function handleSignOut(){
+    const supabase=createClient();
+    if(supabase) await supabase.auth.signOut();
+    setUser(null);
+    ping('Signed out');
+  }
+
   async function make(){
+    if(!user){
+      setShowAuth(true);
+      return;
+    }
     const issues=validateCharacters(form.characters, form.format, form.groupName);
     if(issues.length){setErr(issues[0]);return;}
     setLoad(true);setErr('');
@@ -144,6 +174,25 @@ export default function Home(){
     }catch(e){setErr(e instanceof Error?e.message:'Generation failed')}
     finally{setLoad(false)}
   }
+
+  async function toggleRecordMode(){
+    if(!record){
+      try{
+        if(document.documentElement.requestFullscreen){
+          await document.documentElement.requestFullscreen();
+        }
+      }catch{}
+      setRecord(true);
+    } else {
+      try{
+        if(document.fullscreenElement && document.exitFullscreen){
+          await document.exitFullscreen();
+        }
+      }catch{}
+      setRecord(false);
+    }
+  }
+
   const set=(k:string,x:unknown)=>{
     if(k==='format'){
       const format=String(x);
@@ -156,7 +205,20 @@ export default function Home(){
   const clock=story?.events[Math.max(0,v-1)]?.storyTime||'9:41 PM';
 
   if(!story)return <main className="shell"><section className="setup">
-    <div className="topbar"><b>✦ TextFlick Studio</b>{saved.length>0&&<button className="ghost" onClick={()=>setShowSaved(true)}>My Stories ({saved.length})</button>}</div>
+    <div className="topbar">
+      <b>✦ TextFlick Studio</b>
+      <div className="topbar-actions">
+        {user ? (
+          <div className="user-badge">
+            <span className="user-email">{user.email?.split('@')[0]}</span>
+            <button className="ghost" onClick={handleSignOut}>Sign out</button>
+          </div>
+        ) : (
+          <button className="ghost auth-btn" onClick={()=>setShowAuth(true)}>Sign in</button>
+        )}
+        {saved.length>0&&<button className="ghost" onClick={()=>setShowSaved(true)}>My Stories ({saved.length})</button>}
+      </div>
+    </div>
     <h1>Build the story. Then play it.</h1>
     <div className="grid">
       {([
@@ -204,9 +266,19 @@ export default function Home(){
       ))}
     </div>
     <SoundSettings prefs={sounds} onChange={updateSounds}/>
-    <button disabled={load||form.premise.length<8||charErrors.length>0} onClick={make}>{load?'Creating story and images…':'Generate complete story'}</button>
+    <button disabled={load||form.premise.length<8||charErrors.length>0} onClick={make}>
+      {load ? 'Creating story and images…' : !user ? 'Sign in to generate complete story' : 'Generate complete story'}
+    </button>
     {err&&<p>{err}</p>}
     {toast&&<div className="idea-toast" role="status">{toast}</div>}
+
+    {showAuth && (
+      <AuthModal
+        isOpen={showAuth}
+        onClose={()=>setShowAuth(false)}
+        onAuthSuccess={()=>ping('Welcome to TextFlick!')}
+      />
+    )}
 
     {showSaved&&<div className="overlay" onClick={()=>setShowSaved(false)}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
@@ -230,7 +302,7 @@ export default function Home(){
   return <main className={record?'recording':'shell'}>
     <section className="stage">
       <div className="phone">
-        <header><span>{clock}</span><span className="notch"/><span>●◔</span></header>
+        <header><span>{clock}</span>{!record&&<span className="notch"/>}<span>●◔</span></header>
         <div className="head"><i>{story.isGroup?'#':'?'}</i><div><b>{headerName}</b><small>{typing?'typing…':story.subtitle}</small></div></div>
         <div className="chat">
           <em>{story.title}</em>
@@ -256,15 +328,18 @@ export default function Home(){
         </div>
         <footer>＋ <span>Message</span> 🎙</footer>
       </div>
-      <div className="controls">
+      <div className={`controls${record?' floating':''}`}>
         <button onClick={()=>{
           unlockAudio();
           if(v>=story.events.length){setV(0);finishedRef.current=false;setPlay(true);return;}
           setPlay(!play);
         }}>{play?'Pause':v>=story.events.length?'Replay':'Play story'}</button>
-        <button onClick={()=>{setV(0);setPlay(false);finishedRef.current=false;}}>Restart</button>
-        <button onClick={()=>setRecord(!record)}>{record?'Exit recording':'Recording mode'}</button>
-        <button onClick={()=>updateSounds({...sounds, enabled:!sounds.enabled})}>{sounds.enabled?'Mute':'Unmute'}</button>
+        <button onClick={()=>{
+          unlockAudio();
+          setV(0);setPlay(false);finishedRef.current=false;
+        }}>Restart</button>
+        <button onClick={toggleRecordMode}>{record?'Exit recording':'Recording mode'}</button>
+        {!record&&<button onClick={()=>updateSounds({...sounds, enabled:!sounds.enabled})}>{sounds.enabled?'Mute':'Unmute'}</button>}
         {!record&&<button onClick={()=>setStory(null)}>New story</button>}
         {!record&&saved.length>0&&<button onClick={()=>setShowSaved(true)}>My Stories</button>}
       </div>
