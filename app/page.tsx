@@ -42,10 +42,11 @@ function hydrateForm(raw: Partial<FormState> | undefined): FormState {
     characters: syncCharactersToFormat(Array.isArray(raw?.characters) ? raw?.characters : defaultCharacters(format), format),
   };
 }
-function cueForEvent(e: E){
-  if(e.type==='image') return 'imageReveal' as const;
-  if(e.type==='deleted') return 'deletedMessage' as const;
-  return (e.isMe ? 'outgoingMessage' : 'incomingMessage') as const;
+function cueForEvent(e: E): 'imageReveal' | 'deletedMessage' | 'outgoingMessage' | 'incomingMessage' {
+  if(e.type==='image') return 'imageReveal';
+  if(e.type==='deleted') return 'deletedMessage';
+  if(e.isMe) return 'outgoingMessage';
+  return 'incomingMessage';
 }
 
 export default function Home(){
