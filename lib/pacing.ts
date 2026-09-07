@@ -23,7 +23,8 @@ export type PacingPresetId =
   | 'cliffhanger-series'
   | 'late-night-dread'
   | 'found-footage'
-  | 'soft-romance';
+  | 'soft-romance'
+  | 'detective-rhythm';
 
 export type PacingPreset = {
   id: PacingPresetId;
@@ -42,6 +43,7 @@ export const PACING_PRESETS: PacingPreset[] = [
   { id: 'late-night-dread', name: 'Late-Night Dread', description: 'Heavy pauses and frightening late-night reveals.', values: { typingMs: 2800, normalPauseMs: 4000, tensionPauseMs: 7500, timeJumpHoldMs: 6000, imageRevealHoldMs: 11000 } },
   { id: 'found-footage', name: 'Found Footage', description: 'Evidence drops, deleted messages, and visual suspense.', values: { typingMs: 2000, normalPauseMs: 3600, tensionPauseMs: 6200, timeJumpHoldMs: 6000, imageRevealHoldMs: 10000 } },
   { id: 'soft-romance', name: 'Soft Romance', description: 'Warm pacing with emotional breathing room.', values: { typingMs: 1500, normalPauseMs: 3700, tensionPauseMs: 5000, timeJumpHoldMs: 5000, imageRevealHoldMs: 7500 } },
+  { id: 'detective-rhythm', name: 'Detective Rhythm', description: 'Clue-by-clue pauses with sharp reveal holds.', values: { typingMs: 1900, normalPauseMs: 3400, tensionPauseMs: 6400, timeJumpHoldMs: 5200, imageRevealHoldMs: 9000 } },
 ];
 
 export const DEFAULT_PACING = PACING_PRESETS[0].values;
@@ -49,7 +51,7 @@ export const DEFAULT_PACING = PACING_PRESETS[0].values;
 export const GENRE_TONE_RECOMMENDATIONS: Record<string, PacingPresetId> = {
   'thriller|creepy': 'slow-burn',
   'horror|dark': 'late-night-dread',
-  'mystery|tense': 'found-footage',
+  'mystery|tense': 'detective-rhythm',
   'drama|emotional': 'cinematic',
   'romance|emotional': 'soft-romance',
   'comedy|chaotic': 'tiktok-fast',

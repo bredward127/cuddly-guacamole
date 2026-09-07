@@ -18,6 +18,14 @@ h1{font-size:clamp(26px,6vw,38px);letter-spacing:-1px;line-height:1.15;margin:0 
 label{display:grid;gap:6px;font-size:12px;font-weight:800;color:#454057;margin:12px 0}
 select,textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff;color:#171524}
 textarea{resize:vertical;line-height:1.5}
+.idea-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 10px}
+@media (max-width:480px){.idea-row{grid-template-columns:1fr}}
+.idea{border:1px dashed #cbbef5;background:#f4efff;border-radius:12px;padding:12px 10px;font-size:13px;font-weight:800;color:#5b3fd6}
+.idea.surprise{background:linear-gradient(105deg,#7a5cf0,#e072bb);color:#fff;border:0;box-shadow:0 8px 18px #7056e833}
+.idea-row.pop .idea{animation:idea-pop .45s ease}
+@keyframes idea-pop{0%{transform:scale(.96) rotate(-1deg)}45%{transform:scale(1.05) rotate(1.4deg)}100%{transform:scale(1) rotate(0)}}
+.idea-toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:80;max-width:calc(100vw - 32px);background:#211f2c;color:#fff;border-radius:999px;padding:10px 16px;font-size:13px;font-weight:800;box-shadow:0 12px 30px #7056e855;animation:toast-in .35s cubic-bezier(.2,1.4,.3,1)}
+@keyframes toast-in{from{opacity:0;transform:translateX(-50%) translateY(14px) scale(.96)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
 .pace{margin:18px 0;padding:14px;border:1px solid var(--line);background:#ffffffa8;border-radius:14px}
 .pace strong{font-size:13px;display:block;margin-bottom:6px}
 .pace label{grid-template-columns:1fr auto;align-items:center;margin:10px 0 0}

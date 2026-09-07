@@ -1,5 +1,8 @@
 'use client';
 import {useEffect,useRef,useState}from'react';
+import {getPreset,toLegacyPacing}from'../lib/pacing';
+import {applySurpriseSeed,pickPremiseOnlySeed,pickSurpriseSeed}from'../lib/randomStoryIdeas';
+
 type E={id:string;sender:string;type:'text'|'image'|'deleted';text:string;imageUrl:string;typing:number;delay:number;storyTime:string;dividerLabel:string;isMe:boolean};
 type S={title:string;contactName:string;subtitle:string;events:E[];senders:string[];youSender:string;isGroup:boolean};
 type Saved={id:string;savedAt:number;form:typeof defaultForm;story:S};
@@ -11,7 +14,11 @@ function colorFor(name:string){
   return PALETTE[h%PALETTE.length];
 }
 const STORAGE_KEY='textflick-saved-stories';
-const defaultForm={genre:'Thriller',length:'4–5 minutes',tone:'Creepy',format:'Dating-app chat',premise:'',imageCount:4,pacing:{typing:1800,normal:3200,tension:5500,jump:5000,reveal:8500}};
+const defaultForm={genre:'Thriller',length:'4–5 minutes',tone:'Creepy',format:'Dating-app chat',premise:'',characters:'',imageCount:4,pacing:{typing:1800,normal:3200,tension:5500,jump:5000,reveal:8500}};
+const genres=['Horror','Thriller','Mystery','Romance','Drama','Comedy','Sci-fi','Fantasy','Time travel','Workplace drama','School drama'] as const;
+const lengths=['45–60 seconds','90 seconds','2–3 minutes','4–5 minutes'] as const;
+const tones=['Creepy','Tense','Emotional','Funny','Dark','Chaotic','Flirty','Wholesome'] as const;
+const formats=['Dating-app chat','Two-person chat','Group chat','Anonymous texter','Family thread'] as const;
 
 function loadSaved():Saved[]{
   if(typeof window==='undefined')return [];
@@ -20,6 +27,11 @@ function loadSaved():Saved[]{
 function persistSaved(list:Saved[]){
   try{window.localStorage.setItem(STORAGE_KEY,JSON.stringify(list.slice(0,30)));}catch{}
 }
+function buildPremise(form:typeof defaultForm){
+  const cast=form.characters.trim();
+  const story=form.premise.trim();
+  return [cast&&`Character definitions:\n${cast}`,story].filter(Boolean).join('\n\n');
+}
 
 export default function Home(){
   const[story,setStory]=useState<S|null>(null);
@@ -27,7 +39,11 @@ export default function Home(){
   const[v,setV]=useState(0),[play,setPlay]=useState(false),[typing,setTyping]=useState(false),[load,setLoad]=useState(false),[err,setErr]=useState(''),[record,setRecord]=useState(false);
   const[saved,setSaved]=useState<Saved[]>([]);
   const[showSaved,setShowSaved]=useState(false);
+  const[toast,setToast]=useState('');
+  const[pop,setPop]=useState(false);
   const bottom=useRef<HTMLDivElement>(null);
+  const lastHook=useRef('');
+  const toastTimer=useRef<number>(0);
 
   useEffect(()=>{setSaved(loadSaved());},[]);
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth',block:'end'})},[v,typing]);
@@ -39,6 +55,24 @@ export default function Home(){
     return()=>{clearTimeout(a);clearTimeout(b)};
   },[play,v,story]);
 
+  function ping(text:string){
+    setToast(text);setPop(true);
+    window.setTimeout(()=>setPop(false),420);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current=window.setTimeout(()=>setToast(''),2400);
+  }
+  function surpriseMe(){
+    const seed=pickSurpriseSeed(lastHook.current);
+    lastHook.current=seed.hook;
+    setForm({...form,...applySurpriseSeed(seed)});
+    ping(`✦ ${seed.hook}`);
+  }
+  function randomPremise(){
+    const seed=pickPremiseOnlySeed(form.genre,form.premise);
+    lastHook.current=seed.hook;
+    setForm({...form,premise:seed.premise});
+    ping(`Premise unlocked: ${seed.hook}`);
+  }
   function saveStory(s:S,f:typeof defaultForm){
     const entry:Saved={id:`${Date.now()}`,savedAt:Date.now(),form:f,story:s};
     const next=[entry,...loadSaved()];
@@ -46,7 +80,9 @@ export default function Home(){
     setSaved(next);
   }
   function openSaved(entry:Saved){
-    setStory(entry.story);setForm(entry.form);setV(0);setPlay(false);setShowSaved(false);
+    setStory(entry.story);
+    setForm({...defaultForm,...entry.form,pacing:{...defaultForm.pacing,...(entry.form?.pacing||{})}});
+    setV(0);setPlay(false);setShowSaved(false);
   }
   function deleteSaved(id:string){
     const next=saved.filter(s=>s.id!==id);
@@ -56,7 +92,7 @@ export default function Home(){
   async function make(){
     setLoad(true);setErr('');
     try{
-      const r=await fetch('/api/story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});
+      const r=await fetch('/api/story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,premise:buildPremise(form)})});
       const d=await r.json();
       if(!r.ok)throw Error(d.error||'Generation failed');
       setStory(d);setV(0);setPlay(false);
@@ -73,21 +109,28 @@ export default function Home(){
     <h1>Build the story. Then play it.</h1>
     <div className="grid">
       {([
-        ['Genre','genre',['Thriller','Horror','Mystery','Romance','Drama']],
-        ['Length','length',['45–60 seconds','90 seconds','2–3 minutes','4–5 minutes']],
-        ['Tone','tone',['Creepy','Tense','Emotional','Funny']],
-        ['Format','format',['Dating-app chat','Two-person chat','Group chat','Anonymous texter']],
+        ['Genre','genre',genres],
+        ['Length','length',lengths],
+        ['Tone','tone',tones],
+        ['Format','format',formats],
       ] as const).map(([l,k,o])=>(
         <label key={k}>{l}
-          <select value={String(form[k as keyof typeof form])} onChange={e=>set(k,e.target.value)}>
+          <select value={String(form[k])} onChange={e=>set(k,e.target.value)}>
             {o.map(x=><option key={x}>{x}</option>)}
           </select>
         </label>
       ))}
     </div>
+    <label>Character definition
+      <textarea rows={3} value={form.characters} onChange={e=>set('characters',e.target.value)} placeholder="Names, relationships, personalities, secrets, and who is the main character…"/>
+    </label>
     <label>Story details
       <textarea rows={5} value={form.premise} onChange={e=>set('premise',e.target.value)} placeholder="Describe exactly what happens…"/>
     </label>
+    <div className={`idea-row${pop?' pop':''}`}>
+      <button type="button" className="idea surprise" onClick={surpriseMe}>Surprise Me</button>
+      <button type="button" className="idea" onClick={randomPremise}>Random Premise Only</button>
+    </div>
     <label>AI image reveals
       <select value={form.imageCount} onChange={e=>set('imageCount',Number(e.target.value))}>
         {[0,1,2,3,4].map(x=><option key={x} value={x}>{x} images</option>)}
@@ -108,6 +151,7 @@ export default function Home(){
     </div>
     <button disabled={load||form.premise.length<8} onClick={make}>{load?'Creating story and images…':'Generate complete story'}</button>
     {err&&<p>{err}</p>}
+    {toast&&<div className="idea-toast" role="status">{toast}</div>}
 
     {showSaved&&<div className="overlay" onClick={()=>setShowSaved(false)}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
