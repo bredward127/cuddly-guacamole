@@ -1,107 +1,167 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;600;700;800&display=swap');
-:root{--ink:#171524;--paper:#f7f5ff;--purple:#7056e8;--line:#ded9f2;--muted:#746f8c}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{height:100%}
-body{margin:0;min-height:100%;background:radial-gradient(circle at 12% 10%,#ece4ff,transparent 30%),#f7f5ff;color:var(--ink);font-family:Manrope,Arial;overflow-x:hidden}
-button,select,textarea,input{font:inherit}
-button{cursor:pointer}
-input,select,textarea{font-size:16px!important}
-.shell{max-width:640px;margin:0 auto;padding:24px 18px calc(28px + env(safe-area-inset-bottom));width:100%}
-.setup{width:100%}
-.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
-.topbar>b{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:800}
-.ghost{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 12px;font-size:11px;font-weight:700;color:#544d69}
-.ghost.danger{color:#b1265b;border-color:#f0c9d6}
-h1{font-size:clamp(26px,6vw,38px);letter-spacing:-1px;line-height:1.15;margin:0 0 20px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
-@media (max-width:480px){.grid{grid-template-columns:1fr}}
-label{display:grid;gap:6px;font-size:12px;font-weight:800;color:#454057;margin:12px 0}
-select,textarea,input[type=text],.chars input,.chars textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff;color:#171524}
-textarea{resize:vertical;line-height:1.5}
-.chars,.sounds{margin:16px 0;padding:14px;border:1px solid var(--line);background:#ffffffc7;border-radius:16px}
-.chars-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-.chars-toggle{border:0;background:transparent;padding:0;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;color:var(--ink)}
-.chars-toggle span{color:var(--purple)}
-.char-grid{display:grid;gap:10px}
-.char-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}
-.char-card.main{border-color:#cbbef5;box-shadow:0 0 0 3px #efe9ff}
-.char-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
-.char-card-head b{font-size:12px}
-.char-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.char-errors{margin:10px 0 0;padding-left:18px;color:#b1265b;font-size:12px;font-weight:700}
-.sounds b{font-size:14px}
-.sound-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;font-size:12px}
-.sound-row.test{display:grid;grid-template-columns:1fr auto;align-items:center}
-.sound-row.test label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0}
-.sound-row input[type=checkbox]{width:18px;height:18px;accent-color:#7056e8}
-.sound-row input[type=range]{width:46%;accent-color:#7056e8}
-.sound-note{margin:8px 0 0;color:var(--muted);font-size:11px;font-weight:600;line-height:1.45}
-.helpinfo{position:relative;display:inline-flex;align-items:center}
-.helpinfo-btn{width:18px;height:18px;border-radius:50%;border:1px solid #cbbef5;background:#f4efff;color:#5b3fd6;font:700 11px/1 Manrope,Arial;padding:0}
-.helpinfo-tip{display:none;position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:230px;background:#211f2c;color:#fff;padding:8px 10px;border-radius:10px;font-size:11px;font-weight:600;z-index:20;line-height:1.4}
-.helpinfo-backdrop,.helpinfo-sheet{display:none}
-@media (hover:hover) and (min-width:721px){
-  .helpinfo:hover .helpinfo-tip,.helpinfo:focus-within .helpinfo-tip{display:block}
+'use client';
+import {useEffect,useRef,useState}from'react';
+import CharacterBuilder from '../components/CharacterBuilder';
+import SoundSettings from '../components/SoundSettings';
+import {applySurpriseSeed,pickPremiseOnlySeed,pickSurpriseSeed}from'../lib/randomStoryIdeas';
+import {Character, charactersFromSeedText, defaultCharacters, syncCharactersToFormat, validateCharacters}from'../lib/characters';
+import {defaultSoundPrefs, loadSoundPrefs, playSound, saveSoundPrefs, SoundPrefs, unlockAudio}from'../lib/sounds';
+
+type E={id:string;sender:string;type:'text'|'image'|'deleted';text:string;imageUrl:string;typing:number;delay:number;storyTime:string;dividerLabel:string;isMe:boolean};
+type S={title:string;contactName:string;subtitle:string;events:E[];senders:string[];youSender:string;isGroup:boolean;participants?:Character[];groupName?:string};
+type FormState={genre:string;length:string;tone:string;format:string;premise:string;groupName:string;characters:Character[];imageCount:number;pacing:{typing:number;normal:number;tension:number;jump:number;reveal:number}};
+type Saved={id:string;savedAt:number;form:FormState;story:S};
+
+const PALETTE=['#e0507a','#3f9b6f','#c98a2e','#5b7fd6','#a25bd6','#2ea3a3','#d66b3f','#7a6fd6'];
+function colorFor(name:string){
+  let h=0;
+  for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;
+  return PALETTE[h%PALETTE.length];
 }
-@media (hover:none), (max-width:720px){
-  .helpinfo-tip{display:none!important}
-  .helpinfo-backdrop{display:block;position:fixed;inset:0;background:#0006;z-index:80}
-  .helpinfo-sheet{display:block;position:fixed;left:0;right:0;bottom:0;background:#fff;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0;z-index:90;box-shadow:0 -10px 40px #0003}
-  .helpinfo-sheet p{margin:0 0 12px;font-size:14px;font-weight:600;color:#454057;line-height:1.45}
+const STORAGE_KEY='textflick-saved-stories';
+const defaultForm:FormState={genre:'Thriller',length:'4–5 minutes',tone:'Creepy',format:'Dating-app chat',premise:'',groupName:'',characters:defaultCharacters('Dating-app chat'),imageCount:4,pacing:{typing:1800,normal:3200,tension:5500,jump:5000,reveal:8500}};
+const genres=['Horror','Thriller','Mystery','Romance','Drama','Comedy','Sci-fi','Fantasy','Time travel','Workplace drama','School drama'] as const;
+const lengths=['45–60 seconds','90 seconds','2–3 minutes','4–5 minutes'] as const;
+const tones=['Creepy','Tense','Emotional','Funny','Dark','Chaotic','Flirty','Wholesome'] as const;
+const formats=['Dating-app chat','Two-person chat','Group chat','Anonymous texter','Family thread'] as const;
+
+function loadSaved():Saved[]{
+  if(typeof window==='undefined')return [];
+  try{return JSON.parse(window.localStorage.getItem(STORAGE_KEY)||'[]');}catch{return [];}
 }
-.idea-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 10px}
-@media (max-width:480px){.idea-row{grid-template-columns:1fr}}
-.idea{border:1px dashed #cbbef5;background:#f4efff;border-radius:12px;padding:12px 10px;font-size:13px;font-weight:800;color:#5b3fd6}
-.idea.surprise{background:linear-gradient(105deg,#7a5cf0,#e072bb);color:#fff;border:0;box-shadow:0 8px 18px #7056e833}
-.idea-row.pop .idea{animation:idea-pop .45s ease}
-@keyframes idea-pop{0%{transform:scale(.96) rotate(-1deg)}45%{transform:scale(1.05) rotate(1.4deg)}100%{transform:scale(1) rotate(0)}}
-.idea-toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:80;max-width:calc(100vw - 32px);background:#211f2c;color:#fff;border-radius:999px;padding:10px 16px;font-size:13px;font-weight:800;box-shadow:0 12px 30px #7056e855;animation:toast-in .35s cubic-bezier(.2,1.4,.3,1)}
-@keyframes toast-in{from{opacity:0;transform:translateX(-50%) translateY(14px) scale(.96)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
-.pace{margin:18px 0;padding:14px;border:1px solid var(--line);background:#ffffffa8;border-radius:14px}
-.pace strong{font-size:13px;display:block;margin-bottom:6px}
-.pace label{grid-template-columns:1fr auto;align-items:center;margin:10px 0 0}
-.pace input[type=range]{grid-column:1/3;width:100%;accent-color:#7056e8;height:22px}
-.pace span{font:11px 'DM Mono';color:#7056e8}
-button[disabled]{opacity:.5}
-.setup>button{width:100%;border:0;border-radius:12px;background:linear-gradient(105deg,#674be0,#8a61ed);color:#fff;padding:15px;font-weight:800;margin-top:10px}
-.setup>p{color:#b1265b;font-size:12px;font-weight:700;margin:10px 2px 0}
-.stage{width:100%;display:flex;flex-direction:column;align-items:center;padding-top:6px}
-.phone{width:100%;max-width:380px;aspect-ratio:9/18.5;max-height:78vh;border:9px solid #111;border-radius:44px;overflow:hidden;background:#fafafd;box-shadow:0 26px 60px #30256b3d;display:flex;flex-direction:column;position:relative}
-header{height:30px;padding:8px 16px 0;display:flex;justify-content:space-between;font-size:9px;font-weight:800;background:#fff;flex-shrink:0}
-.notch{position:absolute;top:0;left:calc(50% - 45px);width:90px;height:16px;background:#111;border-radius:0 0 12px 12px}
-.head{display:flex;gap:9px;align-items:center;padding:9px 14px;border-bottom:1px solid #eee;background:#fff;flex-shrink:0}
-.head i{font-style:normal;width:32px;height:32px;border-radius:50%;background:#302c45;color:#fff;display:grid;place-items:center}
-.head b,.head small{display:block}
-.head b{font-size:13px}
-.head small{font-size:9px;color:#8c8798}
-.chat{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(#fbfaff,#f2f0f6);-webkit-overflow-scrolling:touch}
-.chat em{text-align:center;color:#a29baa;font:9px/1.4 'DM Mono';font-style:normal;letter-spacing:.5px;margin-bottom:4px}
-.divider{text-align:center;color:#938b9e;font:9px 'DM Mono';margin:8px 0 2px}
-.divider small{display:block;font-size:8px;opacity:.7;margin-top:2px}
-.row{display:flex}
-.row.out{justify-content:flex-end}
-.row.in{justify-content:flex-start}
-.row article{max-width:78%;padding:9px 11px;border-radius:18px;font-size:13px;box-shadow:0 1px 1px #2222}
-.row article span{display:block}
-.row.in article{background:#e3e0e9;border-bottom-left-radius:4px}
-.row.out article{background:#7759e6;color:#fff;border-bottom-right-radius:4px}
-.row article img{width:100%;display:block;border-radius:10px;margin-bottom:7px;max-height:220px;object-fit:cover}
-.sendername{display:block;font-size:10px;font-weight:800;margin-bottom:3px}
-.dots{padding:10px;background:#e3e0e9;width:44px;border-radius:16px;font-size:10px;letter-spacing:2px;color:#8a8391}
-footer{height:52px;display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;color:#756b8c;font-size:16px;flex-shrink:0}
-footer span{flex:1;padding:8px 12px;background:#f0eef4;border-radius:18px;font-size:12px}
-.controls{display:flex;gap:8px;margin-top:14px;width:100%;max-width:380px;flex-wrap:wrap;justify-content:center}
-.controls button{border:1px solid #ddd7ed;background:#fff;border-radius:10px;padding:11px 14px;font-size:12px;font-weight:700;flex:1;min-width:100px}
-.controls button:first-child{background:#211f2c;color:#fff;border-color:#211f2c}
-.recording{min-height:100dvh;display:grid;place-items:center;background:#0d0c12;padding:16px}
-.recording .phone{max-height:88vh}
-.overlay{position:fixed;inset:0;background:#00000066;display:flex;align-items:flex-end;justify-content:center;z-index:50}
-.sheet{background:#fff;width:100%;max-width:520px;max-height:75vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px;box-shadow:0 -10px 40px #0003}
-.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.sheet-head>b{font-size:15px}
-.muted{color:var(--muted);font-size:13px}
-.saved-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid #f0eef4}
-.saved-row>div:first-child{cursor:pointer;flex:1}
-.saved-row b{display:block;font-size:13px}
-.saved-row small{display:block;font-size:10px;color:var(--muted);margin-top:2px}
-@media (max-width:850px){.recording .controls{max-width:380px}}
+function persistSaved(list:Saved[]){
+  try{window.localStorage.setItem(STORAGE_KEY,JSON.stringify(list.slice(0,30)));}catch{}
+}
+function hydrateForm(raw: Partial<FormState> | undefined): FormState {
+  const format = raw?.format || defaultForm.format;
+  return {
+    ...defaultForm,
+    ...raw,
+    format,
+    groupName: raw?.groupName || '',
+    pacing:{...defaultForm.pacing, ...(raw?.pacing||{})},
+    characters: syncCharactersToFormat(Array.isArray(raw?.characters) ? raw?.characters : defaultCharacters(format), format),
+  };
+}
+function cueForEvent(e: E): 'imageReveal' | 'deletedMessage' | 'outgoingMessage' | 'incomingMessage' {
+  if(e.type==='image') return 'imageReveal';
+  if(e.type==='deleted') return 'deletedMessage';
+  if(e.isMe) return 'outgoingMessage';
+  return 'incomingMessage';
+}
+
+export default function Home(){
+  const[story,setStory]=useState<S|null>(null);
+  const[form,setForm]=useState(defaultForm);
+  const[v,setV]=useState(0),[play,setPlay]=useState(false),[typing,setTyping]=useState(false),[load,setLoad]=useState(false),[err,setErr]=useState(''),[record,setRecord]=useState(false);
+  const[saved,setSaved]=useState<Saved[]>([]);
+  const[showSaved,setShowSaved]=useState(false);
+  const[toast,setToast]=useState('');
+  const[pop,setPop]=useState(false);
+  const[sounds,setSounds]=useState<SoundPrefs>(defaultSoundPrefs);
+  const bottom=useRef<HTMLDivElement>(null);
+  const lastHook=useRef('');
+  const toastTimer=useRef<number>(0);
+  const soundsRef=useRef(sounds);
+  const finishedRef=useRef(false);
+  const charErrors=validateCharacters(form.characters, form.format, form.groupName);
+  soundsRef.current=sounds;
+
+  useEffect(()=>{setSaved(loadSaved()); setSounds(loadSoundPrefs());},[]);
+  useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth',block:'end'})},[v,typing]);
+  useEffect(()=>{
+    if(!play||!story)return;
+    if(v>=story.events.length){
+      if(!finishedRef.current){
+        finishedRef.current=true;
+        playSound('playbackComplete', soundsRef.current);
+      }
+      setPlay(false);
+      return;
+    }
+    const e=story.events[v];setTyping(true);
+    playSound('typingStart', soundsRef.current);
+    const a=setTimeout(()=>setTyping(false),e.typing);
+    const b=setTimeout(()=>{
+      const prefs=soundsRef.current;
+      if(e.dividerLabel) playSound('timeJump', prefs);
+      playSound(cueForEvent(e), prefs);
+      if(v===story.events.length-1) playSound('twistHit', prefs);
+      setV(x=>x+1);
+    },e.typing+e.delay);
+    return()=>{clearTimeout(a);clearTimeout(b)};
+  },[play,v,story]);
+
+  function ping(text:string){
+    setToast(text);setPop(true);
+    window.setTimeout(()=>setPop(false),420);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current=window.setTimeout(()=>setToast(''),2400);
+  }
+  function updateSounds(next: SoundPrefs){
+    setSounds(next);
+    saveSoundPrefs(next);
+  }
+  function surpriseMe(){
+    const seed=pickSurpriseSeed(lastHook.current);
+    lastHook.current=seed.hook;
+    const next={...form,...applySurpriseSeed(seed)};
+    const cast=charactersFromSeedText(seed.characters, next.format, seed.hook);
+    setForm({...next, ...cast, characters:syncCharactersToFormat(cast.characters, next.format)});
+    ping(`✦ ${seed.hook}`);
+  }
+  function randomPremise(){
+    const seed=pickPremiseOnlySeed(form.genre,form.premise);
+    lastHook.current=seed.hook;
+    setForm({...form,premise:seed.premise});
+    ping(`Premise unlocked: ${seed.hook}`);
+  }
+  function saveStory(s:S,f:FormState){
+    const entry:Saved={id:`${Date.now()}`,savedAt:Date.now(),form:f,story:s};
+    const next=[entry,...loadSaved()];
+    persistSaved(next);
+    setSaved(next);
+  }
+  function openSaved(entry:Saved){
+    setStory(entry.story);
+    setForm(hydrateForm(entry.form));
+    setV(0);setPlay(false);setShowSaved(false);
+  }
+  function deleteSaved(id:string){
+    const next=saved.filter(s=>s.id!==id);
+    persistSaved(next);setSaved(next);
+  }
+
+  async function make(){
+    const issues=validateCharacters(form.characters, form.format, form.groupName);
+    if(issues.length){setErr(issues[0]);return;}
+    setLoad(true);setErr('');
+    try{
+      const r=await fetch('/api/story',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});
+      const d=await r.json();
+      if(!r.ok)throw Error(d.error||'Generation failed');
+      setStory(d);setV(0);setPlay(false);finishedRef.current=false;
+      saveStory(d,form);
+    }catch(e){setErr(e instanceof Error?e.message:'Generation failed')}
+    finally{setLoad(false)}
+  }
+
+  async function toggleRecordMode(){
+    if(!record){
+      try{
+        if(document.documentElement.requestFullscreen){
+          await document.documentElement.requestFullscreen();
+        }
+      }catch{}
+      setRecord(true);
+    } else {
+      try{
+        if(document.fullscreenElement && document.exitFullscreen){
+          await document.exitFullscreen();
+        }
+      }catch{}
+      setRecord(false);
+    }
+  }
+
+  const set=(k:string,x:unknown)=>{
+    if(k==='format'){\n      const format=String(x);\n      setForm({...form, format, characters:syncCharactersToFormat(form.characters, format)});\n      return;\n    }\n    setForm({...form,[k]:x});\n  };\n  const p=(k:string,x:number)=>setForm({...form,pacing:{...form.pacing,[k]:x}});\n  const clock=story?.events[Math.max(0,v-1)]?.storyTime||'9:41 PM';\n\n  if(!story)return <main className=\"shell\"><section className=\"setup\">\n    <div className=\"topbar\"><b>✦ TextFlick Studio</b>{saved.length>0&&<button className=\"ghost\" onClick={()=>setShowSaved(true)}>My Stories ({saved.length})</button>}</div>\n    <h1>Build the story. Then play it.</h1>\n    <div className=\"grid\">\n      {([\n        ['Genre','genre',genres],\n        ['Length','length',lengths],\n        ['Tone','tone',tones],\n        ['Format','format',formats],\n      ] as const).map(([l,k,o])=>(\n        <label key={k}>{l}\n          <select value={String(form[k])} onChange={e=>set(k,e.target.value)}>\n            {o.map(x=><option key={x}>{x}</option>)}\n          </select>\n        </label>\n      ))}\n    </div>\n    <CharacterBuilder\n      format={form.format}\n      groupName={form.groupName}\n      characters={form.characters}\n      onChange={next=>setForm({...form, ...next})}\n    />\n    <label>Story details\n      <textarea rows={5} value={form.premise} onChange={e=>set('premise',e.target.value)} placeholder=\"Describe exactly what happens…\"/>\n    </label>\n    <div className={`idea-row${pop?' pop':''}`}>\n      <button type=\"button\" className=\"idea surprise\" onClick={surpriseMe}>Surprise Me</button>\n      <button type=\"button\" className=\"idea\" onClick={randomPremise}>Random Premise Only</button>\n    </div>\n    <label>AI image reveals\n      <select value={form.imageCount} onChange={e=>set('imageCount',Number(e.target.value))}>\n        {[0,1,2,3,4].map(x=><option key={x} value={x}>{x} images</option>)}\n      </select>\n    </label>\n    <div className=\"pace\"><strong>Your pacing</strong>\n      {([\n        ['Typing before text','typing'],\n        ['Normal reading pause','normal'],\n        ['Tension pause','tension'],\n        ['Time-jump hold','jump'],\n        ['Image / twist hold','reveal'],\n      ] as const).map(([l,k])=>(\n        <label key={k}>{l}<span>{(form.pacing[k]/1000).toFixed(1)}s</span>\n          <input type=\"range\" min=\"500\" max=\"12000\" step=\"250\" value={form.pacing[k]} onChange={e=>p(k,Number(e.target.value))}/>\n        </label>\n      ))}\n    </div>\n    <SoundSettings prefs={sounds} onChange={updateSounds}/>\n    <button disabled={load||form.premise.length<8||charErrors.length>0} onClick={make}>{load?'Creating story and images…':'Generate complete story'}</button>\n    {err&&<p>{err}</p>}\n    {toast&&<div className=\"idea-toast\" role=\"status\">{toast}</div>}\n\n    {showSaved&&<div className=\"overlay\" onClick={()=>setShowSaved(false)}>\n      <div className=\"sheet\" onClick={e=>e.stopPropagation()}>\n        <div className=\"sheet-head\"><b>My Stories</b><button className=\"ghost\" onClick={()=>setShowSaved(false)}>Close</button></div>\n        {saved.length===0&&<p className=\"muted\">No saved stories yet.</p>}\n        {saved.map(s=>(\n          <div key={s.id} className=\"saved-row\">\n            <div onClick={()=>openSaved(s)}>\n              <b>{s.story.title}</b>\n              <small>{s.form.genre} · {s.form.length} · {new Date(s.savedAt).toLocaleString()}</small>\n            </div>\n            <button className=\"ghost danger\" onClick={()=>deleteSaved(s.id)}>Delete</button>\n          </div>\n        ))}\n      </div>\n    </div>}\n  </section></main>;\n\n  const youName=story.youSender || story.participants?.find(c=>c.isMainCharacter)?.name || story.senders[0];\n  const headerName=story.isGroup?(story.groupName||story.title):story.senders.find(s=>s!==youName)||story.contactName;\n  return <main className={record?'recording':'shell'}>\n    <section className=\"stage\">\n      <div className=\"phone\">\n        <header><span>{clock}</span>{!record&&<span className=\"notch\"/>}<span>●◔</span></header>\n        <div className=\"head\"><i>{story.isGroup?'#':'?'}</i><div><b>{headerName}</b><small>{typing?'typing…':story.subtitle}</small></div></div>\n        <div className=\"chat\">\n          <em>{story.title}</em>\n          {story.events.slice(0,v).map((e,idx,arr)=>{\n            const prev=idx>0?arr[idx-1]:null;\n            const isMe=e.sender===youName || e.isMe;\n            const showName=story.isGroup&&!isMe&&e.type!=='deleted'&&(!prev||prev.sender!==e.sender);\n            return (\n              <div key={e.id}>\n                {e.dividerLabel&&<div className=\"divider\">{e.dividerLabel}<small>{e.storyTime}</small></div>}\n                <div className={isMe?'row out':'row in'}>\n                  <article style={!isMe&&story.isGroup?{borderLeft:`3px solid ${colorFor(e.sender)}`}:undefined}>\n                    {showName&&<b className=\"sendername\" style={{color:colorFor(e.sender)}}>{e.sender}</b>}\n                    {e.type==='image'&&<img src={e.imageUrl} alt=\"AI story reveal\"/>}\n                    <span>{e.text}</span>\n                  </article>\n                </div>\n              </div>\n            );\n          })}\n          {typing&&<div className=\"dots\">•••</div>}\n          <div ref={bottom}/>\n        </div>\n        <footer>＋ <span>Message</span> 🎙</footer>\n      </div>\n      <div className={`controls${record?' floating':''}`}>\n        <button onClick={()=>{\n          unlockAudio();\n          if(v>=story.events.length){setV(0);finishedRef.current=false;setPlay(true);return;}\n          setPlay(!play);\n        }}>{play?'Pause':v>=story.events.length?'Replay':'Play story'}</button>\n        <button onClick={()=>{setV(0);setPlay(false);finishedRef.current=false;}}>Restart</button>\n        <button onClick={toggleRecordMode}>{record?'Exit recording':'Recording mode'}</button>\n        {!record&&<button onClick={()=>updateSounds({...sounds, enabled:!sounds.enabled})}>{sounds.enabled?'Mute':'Unmute'}</button>}\n        {!record&&<button onClick={()=>setStory(null)}>New story</button>}\n        {!record&&saved.length>0&&<button onClick={()=>setShowSaved(true)}>My Stories</button>}\n      </div>\n      {showSaved&&<div className=\"overlay\" onClick={()=>setShowSaved(false)}>\n        <div className=\"sheet\" onClick={e=>e.stopPropagation()}>\n          <div className=\"sheet-head\"><b>My Stories</b><button className=\"ghost\" onClick={()=>setShowSaved(false)}>Close</button></div>\n          {saved.length===0&&<p className=\"muted\">No saved stories yet.</p>}\n          {saved.map(s=>(\n            <div key={s.id} className=\"saved-row\">\n              <div onClick={()=>openSaved(s)}>\n                <b>{s.story.title}</b>\n                <small>{s.form.genre} · {s.form.length} · {new Date(s.savedAt).toLocaleString()}</small>\n              </div>\n              <button className=\"ghost danger\" onClick={()=>deleteSaved(s.id)}>Delete</button>\n            </div>\n          ))}\n        </div>\n      </div>}\n    </section>\n  </main>;\n}\n",path:"app/page.tsx"},{"content":"@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;600;700;800&display=swap');\n:root{--ink:#171524;--paper:#f7f5ff;--purple:#7056e8;--line:#ded9f2;--muted:#746f8c}\n*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}\nhtml{height:100%}\nbody{margin:0;min-height:100%;background:radial-gradient(circle at 12% 10%,#ece4ff,transparent 30%),#f7f5ff;color:var(--ink);font-family:Manrope,Arial;overflow-x:hidden}\nbutton,select,textarea,input{font:inherit}\nbutton{cursor:pointer}\ninput,select,textarea{font-size:16px!important}\n.shell{max-width:640px;margin:0 auto;padding:24px 18px calc(28px + env(safe-area-inset-bottom));width:100%}\n.setup{width:100%}\n.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}\n.topbar>b{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:800}\n.ghost{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 12px;font-size:11px;font-weight:700;color:#544d69}\n.ghost.danger{color:#b1265b;border-color:#f0c9d6}\nh1{font-size:clamp(26px,6vw,38px);letter-spacing:-1px;line-height:1.15;margin:0 0 20px}\n.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}\n@media (max-width:480px){.grid{grid-template-columns:1fr}}\nlabel{display:grid;gap:6px;font-size:12px;font-weight:800;color:#454057;margin:12px 0}\nselect,textarea,input[type=text],.chars input,.chars textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff;color:#171524}\ntextarea{resize:vertical;line-height:1.5}\n.chars,.sounds{margin:16px 0;padding:14px;border:1px solid var(--line);background:#ffffffc7;border-radius:16px}\n.chars-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}\n.chars-toggle{border:0;background:transparent;padding:0;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;color:var(--ink)}\n.chars-toggle span{color:var(--purple)}\n.char-grid{display:grid;gap:10px}\n.char-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}\n.char-card.main{border-color:#cbbef5;box-shadow:0 0 0 3px #efe9ff}\n.char-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}\n.char-card-head b{font-size:12px}\n.char-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}\n.char-errors{margin:10px 0 0;padding-left:18px;color:#b1265b;font-size:12px;font-weight:700}\n.sounds b{font-size:14px}\n.sound-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;font-size:12px}\n.sound-row.test{display:grid;grid-template-columns:1fr auto;align-items:center}\n.sound-row.test label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0}\n.sound-row input[type=checkbox]{width:18px;height:18px;accent-color:#7056e8}\n.sound-row input[type=range]{width:46%;accent-color:#7056e8}\n.sound-note{margin:8px 0 0;color:var(--muted);font-size:11px;font-weight:600;line-height:1.45}\n.helpinfo{position:relative;display:inline-flex;align-items:center}\n.helpinfo-btn{width:18px;height:18px;border-radius:50%;border:1px solid #cbbef5;background:#f4efff;color:#5b3fd6;font:700 11px/1 Manrope,Arial;padding:0}\n.helpinfo-tip{display:none;position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:230px;background:#211f2c;color:#fff;padding:8px 10px;border-radius:10px;font-size:11px;font-weight:600;z-index:20;line-height:1.4}\n.helpinfo-backdrop,.helpinfo-sheet{display:none}\n@media (hover:hover) and (min-width:721px){\n  .helpinfo:hover .helpinfo-tip,.helpinfo:focus-within .helpinfo-tip{display:block}\n}\n@media (hover:none), (max-width:720px){\n  .helpinfo-tip{display:none!important}\n  .helpinfo-backdrop{display:block;position:fixed;inset:0;background:#0006;z-index:80}\n  .helpinfo-sheet{display:block;position:fixed;left:0;right:0;bottom:0;background:#fff;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0;z-index:90;box-shadow:0 -10px 40px #0003}\n  .helpinfo-sheet p{margin:0 0 12px;font-size:14px;font-weight:600;color:#454057;line-height:1.45}\n}\n.idea-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 10px}\n@media (max-width:480px){.idea-row{grid-template-columns:1fr}}\n.idea{border:1px dashed #cbbef5;background:#f4efff;border-radius:12px;padding:12px 10px;font-size:13px;font-weight:800;color:#5b3fd6}\n.idea.surprise{background:linear-gradient(105deg,#7a5cf0,#e072bb);color:#fff;border:0;box-shadow:0 8px 18px #7056e833}\n.idea-row.pop .idea{animation:idea-pop .45s ease}\n@keyframes idea-pop{0%{transform:scale(.96) rotate(-1deg)}45%{transform:scale(1.05) rotate(1.4deg)}100%{transform:scale(1) rotate(0)}}\n.idea-toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:80;max-width:calc(100vw - 32px);background:#211f2c;color:#fff;border-radius:999px;padding:10px 16px;font-size:13px;font-weight:800;box-shadow:0 12px 30px #7056e855;animation:toast-in .35s cubic-bezier(.2,1.4,.3,1)}\n@keyframes toast-in{from{opacity:0;transform:translateX(-50%) translateY(14px) scale(.96)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}\n.pace{margin:18px 0;padding:14px;border:1px solid var(--line);background:#ffffffa8;border-radius:14px}\n.pace strong{font-size:13px;display:block;margin-bottom:6px}\n.pace label{grid-template-columns:1fr auto;align-items:center;margin:10px 0 0}\n.pace input[type=range]{grid-column:1/3;width:100%;accent-color:#7056e8;height:22px}\n.pace span{font:11px 'DM Mono';color:#7056e8}\nbutton[disabled]{opacity:.5}\n.setup>button{width:100%;border:0;border-radius:12px;background:linear-gradient(105deg,#674be0,#8a61ed);color:#fff;padding:15px;font-weight:800;margin-top:10px}\n.setup>p{color:#b1265b;font-size:12px;font-weight:700;margin:10px 2px 0}\n.stage{width:100%;display:flex;flex-direction:column;align-items:center;padding-top:6px}\n.phone{width:100%;max-width:380px;aspect-ratio:9/18.5;max-height:78vh;border:9px solid #111;border-radius:44px;overflow:hidden;background:#fafafd;box-shadow:0 26px 60px #30256b3d;display:flex;flex-direction:column;position:relative}\nheader{height:30px;padding:8px 16px 0;display:flex;justify-content:space-between;font-size:9px;font-weight:800;background:#fff;flex-shrink:0}\n.notch{position:absolute;top:0;left:calc(50% - 45px);width:90px;height:16px;background:#111;border-radius:0 0 12px 12px}\n.head{display:flex;gap:9px;align-items:center;padding:9px 14px;border-bottom:1px solid #eee;background:#fff;flex-shrink:0}\n.head i{font-style:normal;width:32px;height:32px;border-radius:50%;background:#302c45;color:#fff;display:grid;place-items:center}\n.head b,.head small{display:block}\n.head b{font-size:13px}\n.head small{font-size:9px;color:#8c8798}\n.chat{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(#fbfaff,#f2f0f6);-webkit-overflow-scrolling:touch}\n.chat em{text-align:center;color:#a29baa;font:9px/1.4 'DM Mono';font-style:normal;letter-spacing:.5px;margin-bottom:4px}\n.divider{text-align:center;color:#938b9e;font:9px 'DM Mono';margin:8px 0 2px}\n.divider small{display:block;font-size:8px;opacity:.7;margin-top:2px}\n.row{display:flex}\n.row.out{justify-content:flex-end}\n.row.in{justify-content:flex-start}\n.row article{max-width:78%;padding:9px 11px;border-radius:18px;font-size:13px;box-shadow:0 1px 1px #2222}\n.row article span{display:block}\n.row.in article{background:#e3e0e9;border-bottom-left-radius:4px}\n.row.out article{background:#7759e6;color:#fff;border-bottom-right-radius:4px}\n.row article img{width:100%;display:block;border-radius:10px;margin-bottom:7px;max-height:220px;object-fit:cover}\n.sendername{display:block;font-size:10px;font-weight:800;margin-bottom:3px}\n.dots{padding:10px;background:#e3e0e9;width:44px;border-radius:16px;font-size:10px;letter-spacing:2px;color:#8a8391}\nfooter{height:52px;display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;color:#756b8c;font-size:16px;flex-shrink:0}\nfooter span{flex:1;padding:8px 12px;background:#f0eef4;border-radius:18px;font-size:12px}\n.controls{display:flex;gap:8px;margin-top:14px;width:100%;max-width:380px;flex-wrap:wrap;justify-content:center}\n.controls button{border:1px solid #ddd7ed;background:#fff;border-radius:10px;padding:11px 14px;font-size:12px;font-weight:700;flex:1;min-width:100px}\n.controls button:first-child{background:#211f2c;color:#fff;border-color:#211f2c}\n.recording{position:fixed;inset:0;width:100vw;height:100dvh;padding:0;margin:0;background:#fff;z-index:9999;display:block}\n.recording .stage{width:100%;height:100dvh;padding:0;margin:0;display:block;position:relative}\n.recording .phone{width:100vw;height:100dvh;max-width:none;max-height:none;border:none;border-radius:0;box-shadow:none;aspect-ratio:auto;padding-bottom:calc(64px + env(safe-area-inset-bottom))}\n.recording .phone header{padding-top:calc(8px + env(safe-area-inset-top))}\n.controls.floating{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10000;width:auto;max-width:calc(100vw - 24px);margin:0;padding:6px;background:#171524d9;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:14px;box-shadow:0 8px 30px #0004;opacity:.4;transition:opacity .2s ease,transform .2s ease;display:flex;gap:6px}\n.controls.floating:hover,.controls.floating:focus-within{opacity:1}\n.controls.floating button{border:0;background:#ffffff24;color:#fff;border-radius:8px;padding:8px 12px;font-size:11px;min-width:auto;flex:initial}\n.controls.floating button:first-child{background:#7056e8;color:#fff}\n.overlay{position:fixed;inset:0;background:#00000066;display:flex;align-items:flex-end;justify-content:center;z-index:50}\n.sheet{background:#fff;width:100%;max-width:520px;max-height:75vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px;box-shadow:0 -10px 40px #0003}\n.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}\n.sheet-head>b{font-size:15px}\n.muted{color:var(--muted);font-size:13px}\n.saved-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid #f0eef4}\n.saved-row>div:first-child{cursor:pointer;flex:1}\n.saved-row b{display:block;font-size:13px}\n.saved-row small{display:block;font-size:10px;color:var(--muted);margin-top:2px}\n

@@ -13,6 +13,17 @@ const PERSONALITIES = ['anxious but loyal','dry and observant','warm until corne
 const SECRETS = ['hiding a message they were not supposed to see','covering for someone they love','about to leave town','knows the photo is real','pretending not to recognize a name','owes a favor they cannot explain','deleted a chat last night','is the reason the group exists'];
 const RELATIONSHIPS = ['best friend','coworker','sibling','ex','neighbor','classmate','roommate','cousin'];
 
+const ROLE_PREFIXES = new Set([
+  'main', 'friend', 'roommate', 'partner', 'coworker', 'neighbor',
+  'driver', 'driver alias', 'unknown', 'unknown number', 'unknown editor',
+  'unknown dj', 'sender', 'match', 'brother', 'sister', 'older sister',
+  'youngest', 'ex', 'cousin', 'mom', 'dad', 'aunt', 'uncle', 'super',
+  'director', 'boss', 'intern', 'former intern', 'manager', 'student',
+  'classmate', 'peacemaker grandchild', 'planner', 'guest of honor',
+  'commissioner', 'rival', 'bride', 'groom', 'maid of honor', 'substitute',
+  'class clown', 'best friend', 'spirit', 'new member', 'team lead'
+]);
+
 export function isGroupFormat(format: string){
   return /group|family/i.test(format);
 }
@@ -111,21 +122,86 @@ export function generateCharacterIdeas(format: string, existing: Character[] = [
   };
 }
 
+function parseSeedLine(rawLine: string, index: number, format: string) {
+  const line = rawLine.trim();
+  let prefix = '';
+  let remainder = line;
+  const colonIdx = line.indexOf(':');
+  if (colonIdx !== -1) {
+    prefix = line.slice(0, colonIdx).trim();
+    remainder = line.slice(colonIdx + 1).trim();
+  }
+
+  const cleanPrefix = prefix.replace(/^(the|a|an)\s+/i, '').trim();
+  const lowerPrefix = cleanPrefix.toLowerCase();
+
+  // Check if remainder begins with a quoted name like "Nico" or "HomeName"
+  const quotedMatch = remainder.match(/^["“']([^"”',]+)["”'](.*)$/);
+  if (quotedMatch) {
+    const name = quotedMatch[1].trim();
+    const restDesc = (quotedMatch[2] || '').trim().replace(/^[,:—\s]+/, '');
+    return {
+      name,
+      role: prefix && lowerPrefix !== 'main' ? prefix : (index === 0 ? 'You / Main character' : isGroupFormat(format) ? 'Group member' : 'Other participant'),
+      personality: restDesc || '',
+    };
+  }
+
+  // If prefix is a recognized generic role descriptor or 'Main'
+  if (ROLE_PREFIXES.has(lowerPrefix) || lowerPrefix === 'main') {
+    const parts = remainder.split(/[,—]/);
+    const name = parts[0].trim();
+    const restDesc = parts.slice(1).join(', ').trim();
+    return {
+      name: name || (index === 0 ? 'Maya Chen' : `Participant ${index + 1}`),
+      role: prefix && lowerPrefix !== 'main' ? prefix : (index === 0 ? 'You / Main character' : isGroupFormat(format) ? 'Group member' : 'Other participant'),
+      personality: restDesc || '',
+    };
+  }
+
+  // Check compound title prefix like "Aunt Celia", "Cousin Bea", "Classmate Rio"
+  const compoundMatch = prefix.match(/^(Aunt|Uncle|Cousin|Classmate|Coach-bot|Neighbor|Super|Manager|Captain|Director|Ms\.|Mr\.)\s+(.+)$/i);
+  if (compoundMatch) {
+    const titleRole = compoundMatch[1].trim();
+    const properName = compoundMatch[2].trim();
+    return {
+      name: properName,
+      role: titleRole,
+      personality: remainder,
+    };
+  }
+
+  // If prefix itself is a distinct name (e.g. "Owen: jokes about spoilers", "Sable: the newest member")
+  if (prefix) {
+    return {
+      name: prefix,
+      role: index === 0 ? 'You / Main character' : (isGroupFormat(format) ? 'Group member' : 'Other participant'),
+      personality: remainder,
+    };
+  }
+
+  // Fallback: split on comma/dash
+  const fallbackParts = remainder.split(/[,—]/);
+  return {
+    name: fallbackParts[0].trim() || (index === 0 ? 'Maya Chen' : `Participant ${index + 1}`),
+    role: index === 0 ? 'You / Main character' : (isGroupFormat(format) ? 'Group member' : 'Other participant'),
+    personality: fallbackParts.slice(1).join(', ').trim(),
+  };
+}
+
 export function charactersFromSeedText(text: string, format: string, hook: string){
   const lines = String(text || '').split('\n').map(line => line.trim()).filter(Boolean);
   const base = defaultCharacters(format);
   const characters = base.map((c, i) => {
     const line = lines[i] || lines[0] || '';
-    const cleaned = line.replace(/^[A-Za-z][A-Za-z0-9 ./-]{0,24}:\s*/, '');
-    const name = (cleaned.split(/[,—]/)[0] || '').trim().slice(0, 40) || (i===0 ? 'Maya Chen' : `Guest ${i+1}`);
-    const rest = cleaned.slice(name.length).replace(/^[,:—\s]+/, '').slice(0, 180);
+    const parsed = parseSeedLine(line, i, format);
     return {
       ...c,
-      name,
-      personality: rest || c.personality,
-      relationship: i===0 ? 'Main character, right-side sender' : 'Story participant',
-      role: i===0 ? 'You / Main character' : (isGroupFormat(format) ? 'Group member' : 'Other participant'),
-      isMainCharacter: i===0,
+      name: parsed.name.slice(0, 40),
+      role: parsed.role || c.role,
+      personality: parsed.personality.slice(0, 180) || c.personality,
+      relationship: i === 0 ? 'Main character, right-side sender' : 'Story participant',
+      isMainCharacter: i === 0,
     };
   });
   return {groupName: isGroupFormat(format) ? hook.slice(0, 42) : '', characters};
